@@ -39,33 +39,21 @@ Shape Detection by George Melcer
 
 #define UART_BAUD 57600
 
-#define  BUFFER_LEN 200
-float accelMagBuffer[BUFFER_LEN];
-
-#define AXISES   3
-
-#define INT1_PIN 2
-#define INT2_PIN 3
 
 #define X_AXIS      0
 #define Y_AXIS      1
 #define Z_AXIS      2
-
-#define SHAKE_INTENSITY_THRESHOLD      40
-
-
+#define SHAKE_INTENSITY_THRESHOLD      100
+#define BUFFER_LEN 200
 #define ENABLE_DEBUG  0
-
+#define AXISES   3
 #define GSCALE 8 // Sets full-scale range to +/-2, 4, or 8g. Used to calc real g values.
+
+
 
 void setup()
 {
   Serial.begin(UART_BAUD);
-  Serial.println("MMA8452 Basic Example");
-  pinMode(INT1_PIN, INPUT);
-  pinMode(INT2_PIN, INPUT);
-  digitalWrite(INT1_PIN, LOW);
-  digitalWrite(INT2_PIN, LOW);
   Wire.begin(); //Join the bus as a master
 
   initMMA8452(); //Test and intialize the MMA8452
@@ -84,49 +72,40 @@ void loop()
     int transientStatus =0;
     float accelG[AXISES];  // Stores the real accel value in g's
     int movementAverage=0;
-  
-    if(ENABLE_DEBUG)
-    {
-      Serial.println("INT1: " + String(digitalRead(INT1_PIN)));
-      Serial.println("INT2: " + String(digitalRead(INT2_PIN)));
-    }
-    
-    transientStatus = readRegister(INT_SOURCE); 
-    readRegister(TRANSIENT_SRC); 
-
-  if(ENABLE_DEBUG)
-    Serial.println("IRQ SRC: " + String(transientStatus));
-    
-
+    unsigned int bufferFilled = 0;
+    float accelMagBuffer[BUFFER_LEN];
 
 
     
   readAccelData(accelCount);  // Read the x/y/z adc values
 
     
-
   for (int i = 0 ; i < AXISES ; i++)  //convert register values into g's
   {
     accelG[i] = (float) accelCount[i] / ((1<<12)/(2*GSCALE));  // get actual g value, this depends on scale being set
   }
   
 
-  accelMagBuffer[bufferPosition++] =sqrt(pow(accelG[X_AXIS],2) +  pow(accelG[Y_AXIS],2) +pow(accelG[Z_AXIS],2)); //magitude of the acceleration
+  accelMagBuffer[bufferPosition++] =sqrt(pow(accelG[X_AXIS],2) +  pow(accelG[Y_AXIS],2) +pow(accelG[Z_AXIS],2)); //magitude of the acceleration vector
   if(bufferPosition > BUFFER_LEN)
-    bufferPosition = 0;
-
-
-
-  if(bufferPosition> 50)
- for(int i=bufferPosition; i>bufferPosition-50; i--)
-   movementAverage +=accelMagBuffer[i];
+     bufferPosition = 0;
+  
    
-  if(movementAverage > SHAKE_INTENSITY_THRESHOLD)
-    Serial.println("Shaking Detected");
+    //NOTE: THIS MECHANISM CAN BE IMPROVED. A BIT FLAWED BUT WORKS
+  if(bufferPosition> 50)  //we need data before we can let determine if shakes have occured
+    bufferFilled = 1;  //buffer filled
+    
+    
+   if(bufferFilled == 1) //only calculate once we have the right amount of data
+     for(int i=bufferPosition; i>bufferPosition-50; i--) //we only are looking at the most recent values
+       movementAverage +=accelMagBuffer[i];  //calculate the sum of the movements over time
+   
+  if(movementAverage > SHAKE_INTENSITY_THRESHOLD) //does the movement pass the shake threshold?
+    Serial.println("Shaking Detected"); //oh shit--yes it does! We detected shake(s)!
 
   
 
-  delay(50);  // Delay here for visibility
+  delay(4);  //we don't need more data unless we want to detect vibrations :)
 
 }
 
